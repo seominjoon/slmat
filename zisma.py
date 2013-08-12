@@ -3,7 +3,7 @@
 # Z-axis Intensity-based Signal Matching Analysis (ZISMA)
 
 import numpy as np
-import scipy
+from scipy.stats import norm
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import os
@@ -11,6 +11,39 @@ import sys
 from glob import glob
 from matplotlib.widgets import Button
 
+
+class wave:
+	def __init__(self, data):
+		self.data = data
+
+	# Returns the probabilities that self.data and
+	# data represent the same object with translation t
+	# at slice z
+	def sim(self, another, z, t, std=4):
+		data = another.data
+		init = z
+		end = min(len(self.data),len(data)+t)
+		errors = np.zeros(end-init)
+		gauss = np.zeros(end-init)
+		rf = norm(loc=z, scale=std)
+		for ind in np.arange(init, end):
+			errors[ind-init] = abs(self.data[ind]-data[ind-t])
+			gauss[ind-init] = rf.pdf(ind)
+		# normalized error
+		ne = errors*gauss
+		# euclidian distance (rss)
+		ed = np.linalg.norm(ne)
+		return ed
+
+	# optimal translation, calculated via correlation
+	def trnsl(self, another, z, std=4):
+		corlen = min(len(self.data),len(data))
+		rf = norm(loc=z, scale=std)
+		for 	
+		vals = np.correlate(self.data,data,'full')
+		t =  corlen - int(np.argmax(vals))
+		return t
+		
 class draw:
 	def __init__(self, folderdir, folderdir2):
 		self.files = self.fetchFiles(folderdir)
@@ -52,9 +85,13 @@ class draw:
 		#self.bottrans = self.fig.add_subplot(236)
 
 		plt.subplots_adjust(bottom=0.2)
-		self.axok = plt.axes([0.475,0.05,0.1,0.075])
+		self.axok = plt.axes([0.4,0.05,0.1,0.075])
 		self.bok = Button(self.axok, 'OK')
 		self.bok.on_clicked(self.onbutton)
+
+		self.axcmp = plt.axes([0.6,0.05,0.1,0.075])
+		self.bcmp = Button(self.axcmp, 'Compare')
+		self.bcmp.on_clicked(self.oncmp)
 
 		# variable to store marker, line, and vline
 		self.topmarker = None
@@ -96,7 +133,7 @@ class draw:
 	def tempSeq (self, imgs, x, y):
 		seq = {}
 		for ind in range(len(imgs)):
-			seq[ind] = self.pixAvg(imgs[ind], x, y, 7)
+			seq[ind] = self.pixAvg(imgs[ind], x, y, 5)
 		return seq.values()
 
 	def finddel(self, arr, element):
@@ -200,9 +237,27 @@ class draw:
 		self.botline = self.botright.plot(self.botseq)[0]
 		self.botmarker = self.botleft.plot(max_x[0],max_x[1],'-ro')[0]
 		self.botz = self.topz + max_x[2]
+
 		self.botvline = self.botright.axvline(x=self.botz)
 		self.botleft.imshow(self.imgs2[self.botz])
 		plt.show()
+
+	# invoked when "Compare" button is clicked
+	def oncmp(self, event):
+		# calculates optimal translation and similitude measure
+
+		w1 = wave(self.topseq)
+		w2 = wave(self.botseq)
+		t = w1.trnsl(w2,self.topz)
+		dist = w1.sim(w2,self.topz,t)
+		print (t, dist)
+
+	def movez(self, z):
+		return None	
+
+
+	def movexy(self, x, y):
+		return None
 
 draw(sys.argv[1], sys.argv[2])
 
