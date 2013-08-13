@@ -14,7 +14,7 @@ from matplotlib.widgets import Button
 
 class wave:
 	def __init__(self, data):
-		self.data = data
+		self.data = data[:]
 
 	# Returns the probabilities that self.data and
 	# data represent the same object with translation t
@@ -37,13 +37,42 @@ class wave:
 
 	# optimal translation, calculated via correlation
 	def trnsl(self, another, z, std=4):
-		corlen = min(len(self.data),len(data))
-		rf = norm(loc=z, scale=std)
-		for 	
+		sumlen = len(self.data)+len(another.data)
+		vals = np.zeros(sumlen)
+		for t in np.range(sumlen):
+			init = max(t,len(self.data))
+			end = min(t,len(another.data))+len(self.data)
+			
+			sw = wave(self.data[init-t,end-t]
+			aw = wave(another.data[init-len(self.data),end-len(self.data)])
+			swn = sw
+				
 		vals = np.correlate(self.data,data,'full')
 		t =  corlen - int(np.argmax(vals))
 		return t
+
+	# precondition: self.data and another.data have same length
+	def metric(self, another):
+		if len(self.data) != len(another.data):
+			raise NameError('need to be same length')
+		num = len(self.data)
+		sumval = 0
+		for ind in len(self.data): 
+			sumval += abs(self.data-another.data)
+		return sumval / num
+
+	# perform gaussian normalization on self.data centered at z
+	def norm(self, z, std):
+		rf = norm(loc=z, scale=std)
+		result = self.data[:]
+		for ind in len(self.data):
+			result[ind] *= rf.pdf(ind-z)
+		return wave(result)
+	
+	def get(self, z):
+		return self.data[z]
 		
+
 class draw:
 	def __init__(self, folderdir, folderdir2):
 		self.files = self.fetchFiles(folderdir)
