@@ -14,66 +14,47 @@ from matplotlib.widgets import Button
 
 class wave:
 	def __init__(self, data):
-		self.data = data[:]
+		self.data = np.array(data)
 
-	# Returns the probabilities that self.data and
-	# data represent the same object with translation t
-	# at slice z
-	def sim(self, another, z, t, std=4):
-		data = another.data
-		init = z
-		end = min(len(self.data),len(data)+t)
-		errors = np.zeros(end-init)
-		gauss = np.zeros(end-init)
-		rf = norm(loc=z, scale=std)
-		for ind in np.arange(init, end):
-			errors[ind-init] = abs(self.data[ind]-data[ind-t])
-			gauss[ind-init] = rf.pdf(ind)
-		# normalized error
-		ne = errors*gauss
-		# euclidian distance (rss)
-		ed = np.linalg.norm(ne)
-		return ed
+	# optimal translation, calculated via metric function
+	# the function is normalized by norm function around z
+	def trnsl(self, another, z, std=4, trim=0.1):
+		slen = len(self.data)
+		alen = len(another.data)
+		tlen = int(min(slen,alen)*trim) # trim length
+		sumlen = slen+alen
+		vals = np.zeros(sumlen-2*tlen)
+		for t in np.arange(tlen, sumlen-tlen):
+			init = max(t,alen)
+			end = min(t,slen)+alen
+			vals[t-tlen] = self.metric(another,init-alen,end-alen,init-t,end-t)
+		# optimal translation for another
+		am = int(np.argmin(vals))
+		dist = vals[am]
+		ot =  am + tlen - alen
+		return (ot, dist)
 
-	# optimal translation, calculated via correlation
-	def trnsl(self, another, z, std=4):
-		sumlen = len(self.data)+len(another.data)
-		vals = np.zeros(sumlen)
-		for t in np.range(sumlen):
-			init = max(t,len(self.data))
-			end = min(t,len(another.data))+len(self.data)
-			
-			sw = wave(self.data[init-t,end-t]
-			aw = wave(another.data[init-len(self.data),end-len(self.data)])
-			swn = sw
-				
-		vals = np.correlate(self.data,data,'full')
-		t =  corlen - int(np.argmax(vals))
-		return t
-
-	# precondition: self.data and another.data have same length
-	def metric(self, another):
-		if len(self.data) != len(another.data):
+	# measures the distance between two waves
+	# the greater, the more different are the waves
+	def metric(self, another, si, se, ai, ae):
+		num = se-si
+		if num != ae-ai:
 			raise NameError('need to be same length')
-		num = len(self.data)
-		sumval = 0
-		for ind in len(self.data): 
-			sumval += abs(self.data-another.data)
+		sumval = 0.0
+		for ind in range(num): 
+			sumval += abs(self.data[ind+si]-another.data[ai+ind])
 		return sumval / num
 
 	# perform gaussian normalization on self.data centered at z
+	# not used for now
 	def norm(self, z, std):
 		rf = norm(loc=z, scale=std)
 		result = self.data[:]
-		for ind in len(self.data):
+		for ind in range(len(self.data)):
 			result[ind] *= rf.pdf(ind-z)
 		return wave(result)
-	
-	def get(self, z):
-		return self.data[z]
-		
 
-class draw:
+class app:
 	def __init__(self, folderdir, folderdir2):
 		self.files = self.fetchFiles(folderdir)
 		self.imgs = self.fetchImages(self.files)
@@ -116,7 +97,7 @@ class draw:
 		plt.subplots_adjust(bottom=0.2)
 		self.axok = plt.axes([0.4,0.05,0.1,0.075])
 		self.bok = Button(self.axok, 'OK')
-		self.bok.on_clicked(self.onbutton)
+		self.bok.on_clicked(self.onok)
 
 		self.axcmp = plt.axes([0.6,0.05,0.1,0.075])
 		self.bcmp = Button(self.axcmp, 'Compare')
@@ -162,7 +143,7 @@ class draw:
 	def tempSeq (self, imgs, x, y):
 		seq = {}
 		for ind in range(len(imgs)):
-			seq[ind] = self.pixAvg(imgs[ind], x, y, 5)
+			seq[ind] = self.pixAvg(imgs[ind], x, y, 2)
 		return seq.values()
 
 	def finddel(self, arr, element):
@@ -171,69 +152,15 @@ class draw:
 				del arr[ind]
 				return
 
-	def trans(self, seq):
-		return np.abs(np.fft.rfft(seq-np.mean(seq)))
-
-	def sim (self, seq1, seq2):
-		s1 = np.std(seq1)
-		m1 = np.mean(seq1)
-		s2 = np.std(seq2)
-		m2 = np.mean(seq2)
-		n1 = seq1-m1
-		n2 = seq2-m2
-		if s1 > 0:
-			n1 /= s1
-		if s2 > 0:
-			n2 /= s2
-		vals = np.correlate(n1,n2,'full')
-		z =  min(len(seq1),len(seq2)) - int(np.argmax(vals))
-		return (z,max(vals))
-
 	def onclick(self, event):
 		if event.inaxes == self.topleft:
-			if self.topline:
-				self.finddel(self.topright.lines, self.topline)
-			if self.topmarker:
-				self.finddel(self.topleft.lines, self.topmarker)
-			x = round(event.xdata)
-			y = round(event.ydata)
-			seq = self.tempSeq(self.imgs, x, y)
-			self.topseq = seq
-			self.topx = x
-			self.topy = y
-			self.topline = self.topright.plot(seq)[0]
-			self.topmarker = self.topleft.plot(x, y, '-ro')[0]
-			# draw transformed graph
-			# self.toptrans.plot(self.trans(seq))
-			plt.show()
+			self.movetopxy(event.xdata, event.ydata)
 		if event.inaxes == self.topright:
-			if self.topvline:
-				self.finddel(self.topright.lines, self.topvline)
-			self.topz = int(round(event.xdata))
-			self.topvline = self.topright.axvline(x=self.topz)
-			self.topleft.imshow(self.imgs[self.topz])
-			plt.show()
+			self.movetopz(event.xdata)
 		if event.inaxes == self.botleft:
-			if self.botline:
-				self.finddel(self.botright.lines, self.botline)
-			if self.botmarker:
-				self.finddel(self.botleft.lines, self.botmarker)
-			x = round(event.xdata)
-			y = round(event.ydata)
-			seq = self.tempSeq(self.imgs2, x, y)
-			self.botseq = seq
-			self.botline = self.botright.plot(seq)[0]
-			self.botmarker = self.botleft.plot(x, y, '-ro')[0]
-			# draw transformed graph
-			# self.bottrans.plot(self.trans(seq))
-			plt.show()
+			self.movebotxy(event.xdata, event.ydata)
 		if event.inaxes == self.botright:
-			if self.botvline:
-				self.finddel(self.botright.lines, self.botvline)
-			self.botz = int(round(event.xdata))
-			self.botvline = self.botright.axvline(x=self.botz)
-			self.botleft.imshow(self.imgs2[self.botz])
-			plt.show()
+			self.movebotz(event.xdata)
 
 	# function to be maximzed
 	def findmax(self):
@@ -252,41 +179,60 @@ class draw:
 					maxz = currz
 		return (maxx, maxy, maxz)
 				
-	def onbutton(self, event):
-		max_x = self.findmax()
-			
-		if self.botline:
-			self.finddel(self.botright.lines, self.botline)
-		if self.botmarker:
-			self.finddel(self.botleft.lines, self.botmarker)
-		if self.botvline:
-			self.finddel(self.botright.lines, self.botvline)
-
-		self.botseq = self.tempSeq(self.imgs2, max_x[0], max_x[1])
-		self.botline = self.botright.plot(self.botseq)[0]
-		self.botmarker = self.botleft.plot(max_x[0],max_x[1],'-ro')[0]
-		self.botz = self.topz + max_x[2]
-
-		self.botvline = self.botright.axvline(x=self.botz)
-		self.botleft.imshow(self.imgs2[self.botz])
-		plt.show()
+	def onok(self, event):
+		x,y,z = self.findmax()
+		self.movebotxy(x,y)
+		self.movebotz(z)	
 
 	# invoked when "Compare" button is clicked
 	def oncmp(self, event):
 		# calculates optimal translation and similitude measure
-
 		w1 = wave(self.topseq)
 		w2 = wave(self.botseq)
-		t = w1.trnsl(w2,self.topz)
-		dist = w1.sim(w2,self.topz,t)
-		print (t, dist)
+		ot, dist = w1.trnsl(w2,self.topz)
+		self.movebotz(self.topz-ot)
+		print dist
 
-	def movez(self, z):
-		return None	
+	def movetopxy(self, x, y):
+		if self.topline:
+			self.finddel(self.topright.lines, self.topline)
+		if self.topmarker:
+			self.finddel(self.topleft.lines, self.topmarker)
+		self.topx = round(x)
+		self.topy = round(y)
+		self.topseq = self.tempSeq(self.imgs, self.topx, self.topy)
+		self.topline = self.topright.plot(self.topseq)[0]
+		self.topmarker = self.topleft.plot(x, y, '-ro')[0]
+		plt.show()
+		
+	def movebotxy(self, x, y):
+		if self.botline:
+			self.finddel(self.botright.lines, self.botline)
+		if self.botmarker:
+			self.finddel(self.botleft.lines, self.botmarker)
+		self.botx = round(x)
+		self.boty = round(y)
+		self.botseq = self.tempSeq(self.imgs2, self.botx, self.boty)
+		self.botline = self.botright.plot(self.botseq)[0]
+		self.botmarker = self.botleft.plot(x, y, '-ro')[0]
+		plt.show()
 
+	def movetopz(self, z):
+		if self.topvline:
+			self.finddel(self.topright.lines, self.topvline)
+		self.topz = int(round(z))
+		self.topvline = self.topright.axvline(x=self.topz)
+		self.topleft.imshow(self.imgs[self.topz])
+		plt.show()
 
-	def movexy(self, x, y):
-		return None
+	def movebotz(self, z):
+		if self.botvline:
+			self.finddel(self.botright.lines, self.botvline)
+		self.botz = int(round(z))
+		self.botvline = self.botright.axvline(x=self.botz)
+		self.botleft.imshow(self.imgs2[self.botz])
+		plt.show()
 
-draw(sys.argv[1], sys.argv[2])
+# start application with given arguments
+app(sys.argv[1], sys.argv[2])
 
