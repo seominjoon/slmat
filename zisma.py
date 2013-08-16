@@ -3,6 +3,7 @@
 # Z-axis Intensity-based Signal Matching Analysis (ZISMA)
 
 import numpy as np
+import scipy as sp
 from scipy.stats import norm
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
@@ -10,7 +11,7 @@ import os
 import sys
 from glob import glob
 from matplotlib.widgets import Button
-
+from collections import Counter
 
 class wave:
 	def __init__(self, data):
@@ -180,9 +181,32 @@ class app:
 		return (maxx, maxy, maxz)
 				
 	def onok(self, event):
-		x,y,z = self.findmax()
-		self.movebotxy(x,y)
-		self.movebotz(z)	
+		# x,y,z = self.findmax()
+		# self.movebotxy(x,y)
+		# self.movebotz(z)	
+		
+		# given z in flt, select a few random points 
+		# with variance higher than given threshold
+		# assuming no translation between the two images
+		num = 20 # make 10 random selections
+		ots = np.zeros(num)
+		for ind in range(num):
+			ots[ind] = self.randtrnsl()
+		# print ots
+		self.movebotz(self.topz-sp.stats.mode(ots)[0][0])
+
+	# perform single random selection of point
+	# and return optimal translation
+	def randtrnsl(self, xi=100, xf=400, yi=100, yf=400):
+		x = int(round(xi + np.random.rand(1)[0]*(xf-xi)))
+		y = int(round(yi + np.random.rand(1)[0]*(yf-yi)))
+		topseq = self.tempSeq(self.imgs, x, y) 
+		botseq = self.tempSeq(self.imgs2, x, y)
+		topw = wave(topseq)
+		botw = wave(botseq)
+		# print "(%d,%d)" %(x,y)
+		ot, dist = topw.trnsl(botw,self.topz)
+		return ot
 
 	# invoked when "Compare" button is clicked
 	def oncmp(self, event):
