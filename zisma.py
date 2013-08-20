@@ -12,58 +12,66 @@ import sys
 from glob import glob
 from matplotlib.widgets import Button
 
+sys.setrecursionlimit(10000)
+
+# a set of images that has reference to the next set of images
+class movienode:
+	def __init__(self, topimgs, botimgs, prevnode, nextnode):
+		self.topimgs = topimgs
+		self.botimgs = botimgs
+		self.prevnode = prevnode
+		self.nextnode = nextnode
+
+	def isfirst(self):
+		return self.prevnode == None
+
+	def islast(self):
+		return self.nextnode == None
+	
 # drawing application
 class drawer:
-	def __init__(self, topimgs, botimgs):
-		self.topimgs = topimgs
-		self.topylim, self.topxlim = self.topimgs[0].shape
-
-		self.botimgs = botimgs
-		self.botylim, self.botxlim = self.botimgs[0].shape
-
-		# set up analyzer
-		self.anlz = analyzer(topimgs, botimgs)
-
+	def __init__(self, mn):
 		# set up canvas
 		self.fig = plt.figure()
 		self.topleft = self.fig.add_subplot(221)
 		self.topleft.set_autoscaley_on(False)
 		self.topleft.set_autoscalex_on(False)
-		plt.ylim([0,self.topylim])
-		plt.xlim([0,self.topxlim])
 
 		self.topright = self.fig.add_subplot(222)
 		self.topright.set_autoscaley_on(False)
 		self.topright.set_autoscalex_on(False)
-		plt.ylim([0,255])
-		plt.xlim([0,len(self.topimgs)])
-
-		#self.toptrans = self.fig.add_subplot(233)
 
 		self.botleft = self.fig.add_subplot(223)
 		self.botleft.set_autoscaley_on(False)
 		self.botleft.set_autoscalex_on(False)
-		plt.ylim([0,self.botylim])
-		plt.xlim([0,self.botxlim])
 
 		self.botright = self.fig.add_subplot(224)
 		self.botright.set_autoscaley_on(False)
 		self.botright.set_autoscalex_on(False)
-		plt.ylim([0,255])
-		plt.xlim([0,len(self.botimgs)])
 
-		#self.bottrans = self.fig.add_subplot(236)
-
+		# Buttons
+		# OK button
 		plt.subplots_adjust(bottom=0.2)
 		self.axok = plt.axes([0.4,0.05,0.1,0.075])
 		self.bok = Button(self.axok, 'OK')
 		self.bok.on_clicked(self.onok)
 
+		# Compare button
 		self.axcmp = plt.axes([0.6,0.05,0.1,0.075])
 		self.bcmp = Button(self.axcmp, 'Compare')
 		self.bcmp.on_clicked(self.oncmp)
 
-		# variable to store marker, line, and vline
+		# Prev button
+		self.axprev = plt.axes([0.2,0.05,0.1,0.075])
+		self.bprev = Button(self.axprev, 'Prev')
+		self.bprev.on_clicked(self.onprev)
+
+		# After button
+		self.axnext = plt.axes([0.8,0.05,0.1,0.075])
+		self.bnext = Button(self.axnext, 'Next')
+		self.bnext.on_clicked(self.onnext)
+
+		# initialize variables to store marker, line, and vline
 		self.topmarker = None
 		self.topline = None
 		self.topvline = None
@@ -72,6 +80,31 @@ class drawer:
 		self.botvline = None
 
 		self.cid = self.fig.canvas.mpl_connect('button_press_event', self.onclick)
+		self.setimgs(mn)
+		self.showimgs()
+
+	def setimgs(self, mn):
+		self.topimgs = mn.topimgs
+		self.topylim, self.topxlim = self.topimgs[0].shape
+
+		self.botimgs = mn.botimgs
+		self.botylim, self.botxlim = self.botimgs[0].shape
+
+		self.mn = mn
+
+		# set up analyzer
+		self.anlz = analyzer(topimgs, botimgs)
+
+		self.topleft.set_ylim([0,self.topylim])
+		self.topleft.set_xlim([0,self.topxlim])
+		self.topright.set_ylim([0,255])
+		self.topright.set_xlim([0,len(self.topimgs)])
+		self.botleft.set_ylim([0,self.botylim])
+		self.botleft.set_xlim([0,self.botxlim])
+		self.botright.set_ylim([0,255])
+		self.botright.set_xlim([0,len(self.botimgs)])
+
+	def showimgs(self):
 		self.topleft.imshow(self.topimgs[0])
 		self.botleft.imshow(self.botimgs[0])
 		plt.show()
@@ -93,7 +126,11 @@ class drawer:
 			self.movebotz(event.xdata)
 				
 	def onok(self, event):
-		self.movebotz(self.anlz.trnsl(self.topz))
+		self.cleartopxy()
+		self.clearbotxy()
+		z = self.anlz.trnsl(self.topz)
+		print z
+		self.movebotz(z)
 
 	# invoked when "Compare" button is clicked
 	def oncmp(self, event):
@@ -102,11 +139,56 @@ class drawer:
 		self.movebotz(ot)
 		print dist
 
-	def movetopxy(self, x, y):
+	def onprev(self, event):
+		if self.mn.isfirst():
+			print "current test set is the first of the list."
+		else:
+			self.clearall()
+			self.setimgs(self.mn.prevnode)
+			self.showimgs()
+
+	def onnext(self, event):
+		if self.mn.islast():
+			print "current test set is the last of the list."
+		else:
+			self.clearall()
+			self.setimgs(self.mn.nextnode)
+			self.showimgs()
+
+	def clearall(self):
+		self.cleartopxy()
+		self.cleartopz()
+		self.clearbotxy()
+		self.clearbotz() 
+		
+	def cleartopxy(self):
 		if self.topline:
 			self.finddel(self.topright.lines, self.topline)
 		if self.topmarker:
 			self.finddel(self.topleft.lines, self.topmarker)
+		self.topline = None
+		self.topmarker = None
+
+	def cleartopz(self):
+		if self.topvline:
+			self.finddel(self.topright.lines, self.topvline)
+		self.topvline = None
+
+	def clearbotxy(self):
+		if self.botline:
+			self.finddel(self.botright.lines, self.botline)
+		if self.botmarker:
+			self.finddel(self.botleft.lines, self.botmarker)
+		self.botline = None
+		self.botmarker = None
+
+	def clearbotz(self):
+		if self.botvline:
+			self.finddel(self.botright.lines, self.botvline)
+		self.botvline = None
+
+	def movetopxy(self, x, y):
+		self.cleartopxy()
 		self.topx = round(x)
 		self.topy = round(y)
 		self.topseq = analyzer.tempseq(self.topimgs, self.topx, self.topy)
@@ -115,10 +197,7 @@ class drawer:
 		plt.show()
 		
 	def movebotxy(self, x, y):
-		if self.botline:
-			self.finddel(self.botright.lines, self.botline)
-		if self.botmarker:
-			self.finddel(self.botleft.lines, self.botmarker)
+		self.clearbotxy()
 		self.botx = round(x)
 		self.boty = round(y)
 		self.botseq = analyzer.tempseq(self.botimgs, self.botx, self.boty)
@@ -127,16 +206,14 @@ class drawer:
 		plt.show()
 
 	def movetopz(self, z):
-		if self.topvline:
-			self.finddel(self.topright.lines, self.topvline)
+		self.cleartopz()
 		self.topz = int(round(z))
 		self.topvline = self.topright.axvline(x=self.topz)
 		self.topleft.imshow(self.topimgs[self.topz])
 		plt.show()
 
 	def movebotz(self, z):
-		if self.botvline:
-			self.finddel(self.botright.lines, self.botvline)
+		self.clearbotz()
 		self.botz = int(round(z))
 		self.botvline = self.botright.axvline(x=self.botz)
 		self.botleft.imshow(self.botimgs[self.botz])
@@ -247,7 +324,13 @@ def fetcher(folderdir):
 # the first arg is flt, the second is ref
 topimgs = fetcher(sys.argv[1])
 botimgs = fetcher(sys.argv[2])
-d = drawer(topimgs, botimgs)
+topimgs2 = fetcher(sys.argv[3])
+botimgs2 = fetcher(sys.argv[4])
+mn = movienode(topimgs, botimgs, None, None)
+mn2 = movienode(topimgs2, botimgs2, None, None)
+mn.nextnode = mn2
+mn2.prevnode = mn
+d = drawer(mn)
 
 """
 job sequences
