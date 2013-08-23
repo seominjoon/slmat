@@ -11,8 +11,11 @@ import os
 import sys
 from glob import glob
 from matplotlib.widgets import Button
+import cv2
+from collections import Counter
+import math
 
-sys.setrecursionlimit(10000)
+sys.setrecursionlimit(10000) # virtually no limit on recursion
 
 # a set of images that has reference to the next set of images
 class movienode:
@@ -322,15 +325,77 @@ def fetcher(folderdir):
 
 # start application with given arguments
 # the first arg is flt, the second is ref
-topimgs = fetcher(sys.argv[1])
-botimgs = fetcher(sys.argv[2])
-topimgs2 = fetcher(sys.argv[3])
-botimgs2 = fetcher(sys.argv[4])
-mn = movienode(topimgs, botimgs, None, None)
-mn2 = movienode(topimgs2, botimgs2, None, None)
-mn.nextnode = mn2
-mn2.prevnode = mn
-d = drawer(mn)
+# topimgs = fetcher(sys.argv[1])
+
+
+img = cv2.imread(sys.argv[1], flags=0)
+arr = []
+
+xmean = 0.0
+ymean = 0.0
+
+for r,c in np.ndindex(img.shape):
+	if img[r,c] > 250:
+		arr.append((r,c))
+		xmean += r
+		ymean += c
+xmean /= len(arr)
+ymean /= len(arr)
+print (xmean, ymean)
+
+print len(arr)
+
+
+angles = []
+for r,c in arr:
+	angles.append(math.atan((c-ymean)/(r-xmean)))	
+
+plt.hist(angles, 30)
+plt.show()
+
+# 
+# Z = np.float32(tuple(arr))
+# print len(Z)
+#  
+# # define criteria, number of clusters(K) and apply kmeans()
+# criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10, 1.0)
+# K = 100
+# ret,label,center = cv2.kmeans(Z,K,criteria,10,cv2.KMEANS_PP_CENTERS)
+#  
+# # Now convert back into uint8, and make original image
+# x = 0
+# y = 0
+# for xc, yc in center:
+# 	x += xc
+# 	y += yc
+# x /= len(center)
+# y /= len(center)
+# plt.plot(y,x,'^')
+# 
+# center = np.round(center)
+# print label
+# c = Counter(label.flatten())
+# 
+# plt.imshow(img)
+# for ind in range(len(center)):
+# 	if c[ind] > 5:
+# 		plt.plot(center[ind][1], center[ind][0],'o')
+# plt.show()
+ 
+
+# smpimg = topimgs[int(sys.argv[2])]
+# for r,c in np.ndindex(smpimg.shape):
+# 	if smpimg[r,c] < int(sys.argv[3]):
+# 		smpimg[r,c] = 0
+# 
+# plt.imshow(smpimg)
+# plt.show()
+
+# mn = movienode(topimgs, botimgs, None, None)
+# mn2 = movienode(topimgs2, botimgs2, None, None)
+# mn.nextnode = mn2
+# mn2.prevnode = mn
+# d = drawer(mn)
 
 """
 job sequences
