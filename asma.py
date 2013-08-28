@@ -60,17 +60,19 @@ def cmp(y1, y2,ex=3):
 	dys = np.sort(np.abs(y2-y1))
 	return np.mean((dys[ex:len(dys)-ex]))
 
+# hidden markov model
 class hmm:
 	# dom is the domain of x
 	# px is a function that defines prob for x
 	# pxx defines prob for x given prev x
 	# pex defines prob for e given x
-	def __init__(self, dom, px, pxx, pex):
-		self.dom = dom
-		self.px = px
-		self.pxx = pxx
-		self.pex = pex
+	def __init__(self, box):
+		self.dom = box.dom
+		self.px = box.px
+		self.pxx = box.pxx
+		self.pex = box.pex
 		self.loc = -1 
+		self.len = box.len
 
 	def time_update(self):
 		newpx = np.zeros(len(self.dom))
@@ -84,7 +86,7 @@ class hmm:
 	def evid_update(self, evid):
 		newpx = np.zeros(len(self.dom))
 		for currx in self.dom:
-			newpx[currx] = self.px[currx]*self.pex(evid)	
+			newpx[currx] = self.px(currx)*self.pex(evid, currx, self.loc)	
 		self.px = newpx/np.sum(newpx)
 		
 	# returns current loc, and probabilty
@@ -96,23 +98,106 @@ class hmm:
 		self.evid_update(evid)
 		return self.px,self.loc
 		
+class asma:
+	def __init__(self, topfs, botfs, ol=0.5):
+		self.len = len(topfs)
+		self.dom = np.arange(-1,self.len+1)
+		self.ol = ol
+		self.oi = ol/2
+		self.oe = ol/2
+		self.xpd = {}
+		self.topfs = topfs
+		self.botfs = botfs
 
+	def px(self, x):
+		if x == -1:
+			return self.oi
+		elif x == self.len:
+			return self.oe
+		else:
+			return (1-self.ol)/self.len
 
-topimgs = fetcher(sys.argv[1])
-botimgs = fetcher(sys.argv[2])
+	def pxx(self, currx, prevx):
+		if prevx == -1:
+			n = self.oi*self.len
+			if currx == -1:
+				return (n-1)/n
+			if currx == 0:
+				return 0.9/n
+			if currx == 1:
+				return 0.1/n
+			else:
+				return 0
+		elif prevx == self.len-2:
+			if currx == self.len-2:
+				return 0.1
+			elif currx == self.len-1:
+				return 0.8
+			elif currx == self.len:
+				return 0.1
+			else:
+				return 0
+		elif prevx == self.len-1:
+			if currx == self.len-1:
+				return 0.1
+			if currx == self.len:
+				return 0.9
+			else:
+				return 0
+		elif prevx == self.len:
+			if currx == self.len:
+				return 1
+			else:
+				return 0
+		else:
+			if currx == prevx:
+				return 0.1
+			elif currx == prevx+1:
+				return 0.8
+			elif currx == prevx+2:
+				return 0.1
+			else:
+				return 0
 
-ind = 30
-init = 0
-end = len(botimgs)
-fltimg = topimgs[ind]
-fltrep = rep(fltimg)
-results = []
+	def pex(self, evid, x, loc):
+		if loc not in self.xpd:
+			self.xpd[loc] = self.pexh(evid)
+		return self.xpd[loc][x]
+		
+	def pexh(self, evid):
+		# stores temp prob values
+		out = np.zeros(self.len+2)
+		out[self.len+1] = 1 #just to get correct median
+		# yeah i know i am lazy
+		for ind in np.arange(1,self.len+1):
+			product = 1
+			z = self.topfs[ind-1]
+			scale = np.std(z)
+			for fi in range(len(evid)):
+				scale = np.std(z)
+				product *= norm.pdf(evid[fi],loc=z[fi],scale=scale)
+			out[ind] = product
+		med = np.median(out)
+		out[0] = med
+		out[self.len+1] = med
+		out /= np.sum(out)
+		return out
 
+def getfs(imgs):
+	out = []
+	for ind in range(len(imgs)):
+		out.append(rep(imgs[ind]))	
+		print "image %d features extracted." %ind
+	return out
 
-for i in np.arange(init,end):
-	refimg = botimgs[i]
-	refrep = rep(refimg)
-	results.append(cmp(fltrep,refrep))
-	
-plt.plot(results)
-plt.show()
+topimgs = fetcher(sys.argv[1])[0:3]
+botimgs = fetcher(sys.argv[2])[0:3]
+
+topfs = getfs(topimgs)
+botfs = getfs(botimgs)
+		
+myhmm = hmm(asma(topfs, botfs))
+for ind in range(len(botfs)):
+	px, loc = myhmm.next(botfs[ind])
+	plt.plot(px)
+	plt.show()
