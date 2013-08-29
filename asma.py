@@ -71,32 +71,39 @@ class hmm:
 		self.px = box.px
 		self.pxx = box.pxx
 		self.pex = box.pex
-		self.loc = -1 
+		self.time = -1 
 		self.len = box.len
 
 	def time_update(self):
-		newpx = np.zeros(len(self.dom))
-		for currx in self.dom:
-			out = 0
-			for prevx in self.dom:
-				out += self.pxx(currx,prevx)*self.px(prevx)
-			newpx[currx] = out
-		self.px = newpx
+		newpx = {}
+		if self.time < 0:
+			for currx in self.dom:
+				newpx[currx] = self.px(currx)		 
+		else:
+			for nextx in self.dom:
+				out = 0
+				for currx in self.dom:
+					out += self.pxx(nextx,currx)*self.prob[currx]
+				newpx[nextx] = out
+		self.prob = newpx
+		self.time += 1 # update time
 			
 	def evid_update(self, evid):
-		newpx = np.zeros(len(self.dom))
+		newpx = {}
+		sumval = 0
 		for currx in self.dom:
-			newpx[currx] = self.px(currx)*self.pex(evid, currx, self.loc)	
-		self.px = newpx/np.sum(newpx)
-		
+			newpx[currx] = self.prob[currx]*self.pex(evid, currx, self.time)	
+			sumval += newpx[currx]
+		for key in newpx.keys():
+			newpx[key] = newpx[key]/sumval	
+		self.prob = newpx
+
 	# returns current loc, and probabilty
 	# current loc's evidence given
 	def next(self, evid):
-		if self.loc >= 0:
-			self.time_update()
-		self.loc += 1
+		self.time_update()
 		self.evid_update(evid)
-		return self.px,self.loc
+		return self.prob,self.time
 		
 class asma:
 	def __init__(self, topfs, botfs, ol=0.5):
@@ -165,22 +172,20 @@ class asma:
 		return self.xpd[loc][x]
 		
 	def pexh(self, evid):
-		# stores temp prob values
-		out = np.zeros(self.len+2)
-		out[self.len+1] = 1 #just to get correct median
-		# yeah i know i am lazy
-		for ind in np.arange(1,self.len+1):
+		out = {}
+		for ind in range(self.len):
 			product = 1
-			z = self.topfs[ind-1]
+			z = self.topfs[ind]
 			scale = np.std(z)
+			# plt.plot(evid)
+			# plt.plot(z)
+			# plt.show()
 			for fi in range(len(evid)):
 				scale = np.std(z)
 				product *= norm.pdf(evid[fi],loc=z[fi],scale=scale)
 			out[ind] = product
-		med = np.median(out)
-		out[0] = med
-		out[self.len+1] = med
-		out /= np.sum(out)
+		out[-1] = np.mean(out.values()) 
+		out[self.len] = out[-1] 
 		return out
 
 def getfs(imgs):
@@ -190,14 +195,17 @@ def getfs(imgs):
 		print "image %d features extracted." %ind
 	return out
 
-topimgs = fetcher(sys.argv[1])[0:3]
-botimgs = fetcher(sys.argv[2])[0:3]
+topimgs = fetcher(sys.argv[1])
+botimgs = fetcher(sys.argv[2])[15:75]
 
 topfs = getfs(topimgs)
 botfs = getfs(botimgs)
 		
-myhmm = hmm(asma(topfs, botfs))
+myasma = asma(topfs, botfs)
+myhmm = hmm(myasma)
 for ind in range(len(botfs)):
-	px, loc = myhmm.next(botfs[ind])
-	plt.plot(px)
+	prob, loc = myhmm.next(botfs[ind])
+	plt.plot(prob.keys(), prob.values(), 'o')
+	plt.ylim(0,1)
+	plt.title("evidence #%d" %ind)
 	plt.show()
