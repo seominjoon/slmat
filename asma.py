@@ -53,7 +53,12 @@ def rep (img, th=250, bins=60, sigma=1):
 		rng = (-math.pi,math.pi)
 
 	y,be = np.histogram(angles, bins=bins, range=rng, normed=True)
+	x = np.linspace(-180,180,bins)
+	# plt.plot(x,y)
 	fy = gaussian_filter(y,sigma)
+	# plt.plot(x,fy)
+	# plt.xlim(-180,180)
+	# plt.show()
 	return fy
 
 def cmp(y1, y2,ex=3):
@@ -177,9 +182,12 @@ class asma:
 			product = 1
 			z = self.topfs[ind]
 			scale = np.std(z)
-			# plt.plot(evid)
-			# plt.plot(z)
-			# plt.show()
+			x = np.linspace(-180,180,60)
+			plt.plot(x,evid)
+			plt.plot(x,z)
+			plt.xlabel('angle (degrees)')
+			plt.ylabel('bone density')
+			plt.show()
 			for fi in range(len(evid)):
 				scale = np.std(z)
 				product *= norm.pdf(evid[fi],loc=z[fi],scale=scale)
@@ -195,12 +203,79 @@ def getfs(imgs):
 		print "image %d features extracted." %ind
 	return out
 
-topimgs = fetcher(sys.argv[1])
-botimgs = fetcher(sys.argv[2])[15:75]
+topi = int(sys.argv[2])
+tope = int(sys.argv[3])
+boti = int(sys.argv[5])
+bote = int(sys.argv[6])
+topimgs = fetcher(sys.argv[1])[topi:tope]
+botimgs = fetcher(sys.argv[4])[boti:bote]
 
+def nz(img, r, c):
+	maxr,maxc = img.shape
+	if r < 0 or c < 0 or r >= maxr or c >= maxc:
+		return False
+	if img[r,c] > 0:
+		return True
+	return False
+
+# edge-based feature
+img = topimgs[0]
+f = {}
+f['w'] = 0
+f['e'] = 0
+f['n'] = 0
+f['s'] = 0
+f['sw'] = 0
+f['nw'] = 0
+f['ne'] = 0
+f['se'] = 0
+
+dom = range(len(f.keys()))
+fig = plt.figure()
+ax = fig.add_subplot(1,2,1)
+ax2 = fig.add_subplot(1,2,2)
+r = 0
+c = 0
+
+def inc(d, key):
+	d[key] += 1
+	ax2.plot(r,c,'x')
+
+for r,c in np.ndindex(img.shape):
+	if img[r,c] > 0:
+		up = nz(img,r-1,c)
+		down = nz(img,r+1,c)
+		left = nz(img,r,c-1)
+		right = nz(img,r,c+1)
+		if up and down and right and (not left):
+			inc(f,'w')
+		elif up and down and left and (not right):
+			inc(f,'e')
+		elif left and right and down and (not up):
+			inc(f,'n')
+		elif left and right and up and (not down):
+			inc(f,'s')
+		elif up and right and (not down) and (not left):
+			inc(f,'sw')
+		elif right and down and (not left) and (not up):
+			inc(f,'nw')
+		elif down and left and (not up) and (not right):
+			inc(f,'ne')
+		elif left and up and (not right) and (not down):
+			inc(f,'se')
+
+
+
+ax.bar(dom,f.values())
+ax.set_xticks(dom)
+ax.set_xticklabels(f.keys())
+plt.show()
+		
+
+# run angle-based bone detection
 topfs = getfs(topimgs)
 botfs = getfs(botimgs)
-		
+
 myasma = asma(topfs, botfs)
 myhmm = hmm(myasma)
 for ind in range(len(botfs)):
