@@ -1,6 +1,8 @@
 #!/usr/bin/python
 
-# Z-axis Intensity-based Signal Matching Analysis (ZISMA)
+# Bone-based Angle Histogram and Hidden Markov Model
+# Final revision on Sept. 2, 2013
+# Developed by Min Joon Seo at Seoul National University.
 
 import numpy as np
 import scipy as sp
@@ -16,6 +18,8 @@ from collections import Counter
 import math
 from scipy.ndimage.filters import gaussian_filter
 
+# fetches image from specified folder directory
+# returns an array of image matrices
 def fetcher(folderdir):
 	files = sorted(glob(os.path.join(folderdir, '*.jpg')))
 	topimgs = {} 
@@ -23,8 +27,8 @@ def fetcher(folderdir):
 		topimgs[ind] = mpimg.imread(files[ind])
 	return topimgs.values()
 
-# represents each image with an bins-d array
-# applies gaussian filter
+# represents each image with a bins-dimensional array
+# applies gaussian filter at the end
 def rep (img, th=250, bins=60, sigma=1):
 	rmean = float(0)
 	cmean = float(0)
@@ -61,16 +65,13 @@ def rep (img, th=250, bins=60, sigma=1):
 	# plt.show()
 	return fy
 
-def cmp(y1, y2,ex=3):
-	dys = np.sort(np.abs(y2-y1))
-	return np.mean((dys[ex:len(dys)-ex]))
-
-# hidden markov model
+# general algorithm for hidden markov model
 class hmm:
 	# dom is the domain of x
 	# px is a function that defines prob for x
 	# pxx defines prob for x given prev x
 	# pex defines prob for e given x
+	# box defines a particular problem containing all definitions
 	def __init__(self, box):
 		self.dom = box.dom
 		self.px = box.px
@@ -109,8 +110,15 @@ class hmm:
 		self.time_update()
 		self.evid_update(evid)
 		return self.prob,self.time
-		
+
+# problem-specific
+# defines required prob distribution to be used in HMM
 class asma:
+	# topfs is an array of BBAH (features) for top (flt)
+	# botfs is an array of BBAH for bot(ref)
+	# ol is the predicted overlapping proportion
+	# the greater the value, the more conservative is the model
+	# (less certain)
 	def __init__(self, topfs, botfs, ol=0.5):
 		self.len = len(topfs)
 		self.dom = np.arange(-1,self.len+1)
@@ -121,6 +129,7 @@ class asma:
 		self.topfs = topfs
 		self.botfs = botfs
 
+	# initial distribution
 	def px(self, x):
 		if x == -1:
 			return self.oi
@@ -129,6 +138,7 @@ class asma:
 		else:
 			return (1-self.ol)/self.len
 
+	# temporal conditional probability
 	def pxx(self, currx, prevx):
 		if prevx == -1:
 			n = self.oi*self.len
@@ -171,11 +181,15 @@ class asma:
 			else:
 				return 0
 
+	# evidence likelihood
 	def pex(self, evid, x, loc):
 		if loc not in self.xpd:
 			self.xpd[loc] = self.pexh(evid)
 		return self.xpd[loc][x]
 		
+	# helper function for pex.
+	# in order to reduce redundant computation
+	# stores values in dictionary
 	def pexh(self, evid):
 		out = {}
 		for ind in range(self.len):
@@ -196,6 +210,7 @@ class asma:
 		out[self.len] = out[-1] 
 		return out
 
+# gets BBAH for a set of images
 def getfs(imgs):
 	out = []
 	for ind in range(len(imgs)):
@@ -210,66 +225,70 @@ bote = int(sys.argv[6])
 topimgs = fetcher(sys.argv[1])[topi:tope]
 botimgs = fetcher(sys.argv[4])[boti:bote]
 
-def nz(img, r, c):
-	maxr,maxc = img.shape
-	if r < 0 or c < 0 or r >= maxr or c >= maxc:
-		return False
-	if img[r,c] > 0:
-		return True
-	return False
+# Sample procedures for boundary-based feature
 
-# edge-based feature
-img = topimgs[0]
-f = {}
-f['w'] = 0
-f['e'] = 0
-f['n'] = 0
-f['s'] = 0
-f['sw'] = 0
-f['nw'] = 0
-f['ne'] = 0
-f['se'] = 0
-
-dom = range(len(f.keys()))
-fig = plt.figure()
-ax = fig.add_subplot(1,2,1)
-ax2 = fig.add_subplot(1,2,2)
-r = 0
-c = 0
-
-def inc(d, key):
-	d[key] += 1
-	ax2.plot(r,c,'x')
-
-for r,c in np.ndindex(img.shape):
-	if img[r,c] > 0:
-		up = nz(img,r-1,c)
-		down = nz(img,r+1,c)
-		left = nz(img,r,c-1)
-		right = nz(img,r,c+1)
-		if up and down and right and (not left):
-			inc(f,'w')
-		elif up and down and left and (not right):
-			inc(f,'e')
-		elif left and right and down and (not up):
-			inc(f,'n')
-		elif left and right and up and (not down):
-			inc(f,'s')
-		elif up and right and (not down) and (not left):
-			inc(f,'sw')
-		elif right and down and (not left) and (not up):
-			inc(f,'nw')
-		elif down and left and (not up) and (not right):
-			inc(f,'ne')
-		elif left and up and (not right) and (not down):
-			inc(f,'se')
-
-
-
-ax.bar(dom,f.values())
-ax.set_xticks(dom)
-ax.set_xticklabels(f.keys())
-plt.show()
+# # returns True if img[r,c] is non-zero
+# # returns False if img[r,c] is zero or out of scope of the image
+# def nz(img, r, c):
+# 	maxr,maxc = img.shape
+# 	if r < 0 or c < 0 or r >= maxr or c >= maxc:
+# 		return False
+# 	if img[r,c] > 0:
+# 		return True
+# 	return False
+# 
+# # edge-based feature
+# img = topimgs[0]
+# f = {}
+# f['w'] = 0
+# f['e'] = 0
+# f['n'] = 0
+# f['s'] = 0
+# f['sw'] = 0
+# f['nw'] = 0
+# f['ne'] = 0
+# f['se'] = 0
+# 
+# dom = range(len(f.keys()))
+# fig = plt.figure()
+# ax = fig.add_subplot(1,2,1)
+# ax2 = fig.add_subplot(1,2,2)
+# r = 0
+# c = 0
+# 
+# def inc(d, key):
+# 	d[key] += 1
+# 	ax2.plot(r,c,'x')
+# 
+# for r,c in np.ndindex(img.shape):
+# 	if img[r,c] > 0:
+# 		up = nz(img,r-1,c)
+# 		down = nz(img,r+1,c)
+# 		left = nz(img,r,c-1)
+# 		right = nz(img,r,c+1)
+# 		if up and down and right and (not left):
+# 			inc(f,'w')
+# 		elif up and down and left and (not right):
+# 			inc(f,'e')
+# 		elif left and right and down and (not up):
+# 			inc(f,'n')
+# 		elif left and right and up and (not down):
+# 			inc(f,'s')
+# 		elif up and right and (not down) and (not left):
+# 			inc(f,'sw')
+# 		elif right and down and (not left) and (not up):
+# 			inc(f,'nw')
+# 		elif down and left and (not up) and (not right):
+# 			inc(f,'ne')
+# 		elif left and up and (not right) and (not down):
+# 			inc(f,'se')
+# 
+# 
+# 
+# ax.bar(dom,f.values())
+# ax.set_xticks(dom)
+# ax.set_xticklabels(f.keys())
+# plt.show()
 		
 
 # run angle-based bone detection
